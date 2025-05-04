@@ -1,0 +1,56 @@
+trigger:
+  branches:
+    include:
+      - main  # Le pipeline se déclenchera sur la branche 'main'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  # Variables de votre ACR et AKS
+  azureContainerRegistry: 'votre-acr.azurecr.io'  # Votre ACR
+  imageName: 'votre-image'  # Le nom de l'image Docker
+  aksClusterName: 'votre-cluster-aks'  # Nom de votre cluster AKS
+  aksResourceGroup: 'votre-groupe-ressources'  # Groupe de ressources AKS
+  azureSubscription: 'votre-abonnement-azure'  # Nom de votre abonnement Azure
+
+steps:
+# Étape 1 : Se connecter à Azure
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: $(azureSubscription)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      # Connexion à Azure
+      az account set --subscription $(azureSubscription)
+
+# Étape 2 : Construire l'image Docker
+- task: Docker@2
+  inputs:
+    containerRegistry: $(azureContainerRegistry)  # Connexion à ACR
+    repository: $(azureContainerRegistry)/$(imageName)  # Nom de l'image
+    command: buildAndPush
+    Dockerfile: $(Build.SourcesDirectory)/Dockerfile  # Chemin vers le Dockerfile
+    tags: latest  # Tag de l'image (par exemple, 'latest')
+
+# Étape 3 : Se connecter à AKS
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: $(azureSubscription)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      # Connexion au cluster AKS
+      az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksClusterName)
+
+# Étape 4 : Déployer dans AKS (mise à jour du déploiement Kubernetes)
+- task: kubectl@1
+  inputs:
+    connectionType: AzureRM
+    azureSubscription: $(azureSubscription)
+    azureResourceGroup: $(aksResourceGroup)
+    kubernetesCluster: $(aksClusterName)
+    namespace: default  # Utilisez votre namespace ici
+    command: apply
+    arguments: -f kubernetes/deployment.yaml  # Chemin vers votre fichier de déploiement Kubernetes
